@@ -1,31 +1,29 @@
 require('dotenv').config();
-const sequelize = require('./db');
+const { MongoClient } = require('mongodb');
 
 async function checkData() {
+  const client = new MongoClient(process.env.MONGODB_URI);
   try {
-    await sequelize.authenticate();
-    console.log('DB connection OK');
-
-    const [countResults] = await sequelize.query(
-      'SELECT COUNT(*) AS count FROM parcels_merged;'
-    );
-    const count = parseInt(countResults[0].count, 10);
-    console.log(`parcels_merged has ${count} rows.`);
-
+    await client.connect();
+    const db = client.db(process.env.MONGODB_DB);
+    const collection = db.collection('parcels_merged');
+    const count = await collection.countDocuments();
+    console.log(`Nombre de parcelles fusionnées dans MongoDB: ${count}`);
     if (count > 0) {
-      const [rows] = await sequelize.query(
-        'SELECT * FROM parcels_merged LIMIT 5;'
-      );
-      console.log('Sample rows from parcels_merged:');
-      console.table(rows);
+      const examples = await collection.find({}).limit(5).toArray();
+      console.log('Exemples de documents:');
+      examples.forEach((doc, i) => {
+        console.log(`--- Parcelle #${i + 1} ---`);
+        console.log(JSON.stringify(doc, null, 2));
+      });
       console.log('Data looks OK');
     } else {
-      console.warn('Data table is empty');
+      console.warn('La collection est vide');
     }
   } catch (err) {
-    console.error('Data check failed:', err);
+    console.error('MongoDB data check failed:', err);
   } finally {
-    await sequelize.close();
+    await client.close();
   }
 }
 

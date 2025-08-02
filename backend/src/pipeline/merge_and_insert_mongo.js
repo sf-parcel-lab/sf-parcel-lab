@@ -2,22 +2,30 @@ require('dotenv').config();
 const axios = require('axios');
 const { MongoClient } = require('mongodb');
 
+async function fetchAllData(url, batchSize = 1000, maxTotal = 100000) {
+  let results = [];
+  let offset = 0;
+  while (true) {
+    const batchUrl = `${url}?$limit=${batchSize}&$offset=${offset}`;
+    const response = await axios.get(batchUrl);
+    const data = response.data;
+    results = results.concat(data);
+    if (!data.length || data.length < batchSize || results.length >= maxTotal) break;
+    offset += batchSize;
+  }
+  return results;
+}
+
 async function fetchZoning() {
-  const url = process.env.ZONING_DATA_URL;
-  const response = await axios.get(url);
-  return response.data;
+  return fetchAllData(process.env.ZONING_DATA_URL);
 }
 
 async function fetchLandUse() {
-  const url = process.env.LAND_USE_DATA_URL;
-  const response = await axios.get(url);
-  return response.data;
+  return fetchAllData(process.env.LAND_USE_DATA_URL);
 }
 
 async function fetchParcels() {
-  const url = process.env.PARCELS_DATA_URL;
-  const response = await axios.get(url);
-  return response.data;
+  return fetchAllData(process.env.PARCELS_DATA_URL);
 }
 
 function mergeDatasets(zoningArr, ...otherDatasets) {
@@ -42,22 +50,34 @@ function mergeDatasets(zoningArr, ...otherDatasets) {
   });
 }
 
-async function upsertParcelsMergedMongo(features, db) {
+async function upsertParcelsMergedMongo(merged, db, batchSize = 500) {
   const collection = db.collection('parcels_merged');
-  for (const feat of features) {
-    // MongoDB expects geometry in GeoJSON format, and can index it nativement
-    await collection.updateOne(
-      { parcel_id: feat.parcel_id },
-      {
-        $set: {
-          ...feat,
-          geometry: feat.geometry || null,
-          updated_at: new Date()
-        }
-      },
-      { upsert: true }
-    );
+  // Vide la collection avant chaque import
+  await collection.deleteMany({});
+  console.log('Collection parcels_merged vidée.');
+  let total = merged.length;
+  let inserted = 0;
+  for (let i = 0; i < total; i += batchSize) {
+    const batch = merged.slice(i, i + batchSize);
+    // Diagnostic : log la clé unique du premier doc du batch
+    if (i === 0) {
+      console.log('Exemple de parcel_id dans ce batch :', batch[0].parcel_id);
+      console.log('Exemple de mapblklot dans ce batch :', batch[0].mapblklot);
+      const uniques = new Set(batch.map(doc => doc.mapblklot));
+      console.log('Nombre de mapblklot uniques dans ce batch :', uniques.size);
+    }
+    const ops = batch.map(doc => ({
+      updateOne: {
+        filter: { mapblklot: doc.mapblklot },
+        update: { $set: { ...doc, geometry: doc.geometry || null, updated_at: new Date() } },
+        upsert: true
+      }
+    }));
+    await collection.bulkWrite(ops, { ordered: false });
+    inserted += batch.length;
+    console.log(`Upserted batch ${Math.ceil(inserted / batchSize)}/${Math.ceil(total / batchSize)} (${inserted}/${total})`);
   }
+  console.log(`All ${total} documents upserted in batches of ${batchSize}.`);
 }
 
 async function main() {
@@ -77,9 +97,17 @@ async function main() {
     const parcels = await fetchParcels();
     console.log(`Fetched ${parcels.length} parcels records.`);
     // TODO: fetch other datasets (permits, etc.)
+    if (parcels.length === 0) {
+      console.error('No parcels data fetched! Aborting.');
+      return;
+    }
     console.log('Merging datasets...');
     const merged = mergeDatasets(parcels, zoning, landUse);
     console.log(`Merged dataset: ${merged.length} parcels.`);
+    if (merged.length === 0) {
+      console.error('No merged data to insert!');
+      return;
+    }
     console.log('Upserting into MongoDB...');
     await upsertParcelsMergedMongo(merged, db);
     console.log('Merge & insert done in MongoDB!');
