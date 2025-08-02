@@ -49,6 +49,11 @@ const ParcelMap = () => {
   const [currentFilters, setCurrentFilters] = useState(null);
   const [debugInfo, setDebugInfo] = useState('');
 
+  // Chatbot state
+  const [messages, setMessages] = useState([]);
+  const [isChatExpanded, setIsChatExpanded] = useState(false);
+  const messagesEndRef = useRef(null);
+
   // Refs
   const mapRef = useRef(null);
   const geoJsonLayerRef = useRef(null);
@@ -60,7 +65,12 @@ const ParcelMap = () => {
   // API endpoints
   const API_BASE = 'http://localhost:3001'; // Backend Express server
   const PARCELS_ENDPOINT = `${API_BASE}/api/parcels`;
+  const LLM_QUERY_ENDPOINT = `${API_BASE}/api/query`;
 
+  // Auto-scroll to latest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   // Chargement initial des parcelles au montage
   useEffect(() => {
@@ -87,6 +97,128 @@ const ParcelMap = () => {
     };
     fetchInitialParcels();
   }, []);
+
+  // LLM Query Processing
+  const processLLMQuery = async (query) => {
+    try {
+      setSearchLoading(true);
+      setSearchError(null);
+      
+      const response = await fetch(LLM_QUERY_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: query })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`LLM query failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data;
+      
+    } catch (err) {
+      console.error('Error processing LLM query:', err);
+      setSearchError('⚠️ Could not interpret your query');
+      return null;
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Chat Message Handling
+  const handleChatMessage = async (message) => {
+    if (!message.trim()) return;
+
+    const userMessage = {
+      id: Date.now(),
+      text: message,
+      sender: 'user',
+      timestamp: new Date().toLocaleTimeString()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setSearchQuery('');
+    setSearchLoading(true);
+    setSearchError(null);
+
+    try {
+      const data = await processLLMQuery(message);
+      
+      if (data && data.data) {
+        const botMessage = {
+          id: Date.now() + 1,
+          text: `Found ${data.data.length} parcels matching your query.`,
+          sender: 'bot',
+          timestamp: new Date().toLocaleTimeString(),
+          data: data.data,
+          queryUsed: data.query_used
+        };
+
+        setMessages(prev => [...prev, botMessage]);
+
+        // Display results on map
+        if (data.data.length > 0) {
+          console.log('Sample parcel data:', data.data[0]); // Debug log
+          
+          const geoJsonData = {
+            type: "FeatureCollection",
+            features: data.data
+              .filter(parcel => parcel.shape || parcel.geometry) // Only include parcels with geometry
+              .map(parcel => ({
+                type: "Feature",
+                geometry: parcel.shape || parcel.geometry, // Use shape field from backend
+                properties: parcel
+              }))
+          };
+          
+          console.log('Generated GeoJSON:', geoJsonData); // Debug log
+          setParcelData(geoJsonData);
+          setCurrentFilters(data.query_used);
+          const validParcels = data.data.filter(parcel => parcel.shape || parcel.geometry).length;
+          setDebugInfo(`Found ${data.data.length} parcels matching your query (${validParcels} with geometry)`);
+        } else {
+          setError('⚠️ No parcels matched your query');
+          setParcelData(null);
+        }
+      }
+    } catch (err) {
+      console.error('Error in handleChatMessage:', err);
+      setSearchError('⚠️ An error occurred while processing your query');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Handle search form submission
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      handleChatMessage(searchQuery);
+    }
+  };
+
+  // Clear search and chat
+  const clearSearch = () => {
+    setSearchQuery('');
+    setMessages([]);
+    setSearchError(null);
+    setCurrentFilters(null);
+    setDebugInfo('');
+    // Reload initial parcels
+    fetch(PARCELS_ENDPOINT)
+      .then(response => response.json())
+      .then(data => {
+        if (data.features && data.features.length > 0) {
+          setParcelData(data);
+          setDebugInfo(`Loaded ${data.features.length} parcels (initial)`);
+        }
+      })
+      .catch(err => {
+        setError('Error reloading parcels');
+      });
+  };
+
   // Zoning color mapping
   const getZoningColor = (zoning) => {
     if (!zoning) return '#cccccc';
@@ -272,6 +404,107 @@ const ParcelMap = () => {
           )}
         </div>
       )}
+
+      {/* Search Bar with Chatbot */}
+      <div className={`search-bar ${isChatExpanded ? 'chat-expanded' : ''}`}>
+        <form onSubmit={handleSearch} style={{ display: 'flex', width: '100%' }}>
+          <input
+            type="text"
+            placeholder="Ask about SF parcels... (e.g., 'Show me residential properties in Ingleside')"
+            className="search-input"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            disabled={searchLoading}
+          />
+          <button
+            type="submit"
+            disabled={searchLoading || !searchQuery.trim()}
+            className="search-button"
+          >
+            {searchLoading ? '⏳' : '➤'}
+          </button>
+          <button
+            type="button"
+            className="chat-toggle-button"
+            onClick={() => setIsChatExpanded(!isChatExpanded)}
+            title={isChatExpanded ? 'Collapse chat' : 'Expand chat'}
+          >
+            {isChatExpanded ? '−' : '💬'}
+          </button>
+          <button
+            type="button"
+            className="clear-button"
+            onClick={clearSearch}
+            title="Clear search"
+          >
+            🗑️
+          </button>
+        </form>
+
+        {/* Chat Messages */}
+        {isChatExpanded && (
+          <div className="chat-messages">
+            {messages.length === 0 && (
+              <div className="chat-welcome">
+                <p>👋 Hi! I'm your SF Parcel Assistant.</p>
+                <p>Ask me about:</p>
+                <ul>
+                  <li>• Properties in specific neighborhoods</li>
+                  <li>• Zoning types (residential, commercial, etc.)</li>
+                  <li>• Two-family homes or mixed-use buildings</li>
+                  <li>• Properties in specific districts</li>
+                </ul>
+                <p>Try: "Show me residential properties in Ingleside"</p>
+              </div>
+            )}
+
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`message ${message.sender} ${message.isError ? 'error' : ''}`}
+              >
+                <div className="message-content">
+                  <div className="message-text">{message.text}</div>
+                  {message.data && message.data.length > 0 && (
+                    <div className="message-results">
+                      <div className="results-summary">
+                        <strong>Results:</strong> {message.data.length} parcels found
+                      </div>
+                      {message.queryUsed && (
+                        <details className="query-details">
+                          <summary>View Query Used</summary>
+                          <pre>{JSON.stringify(message.queryUsed, null, 2)}</pre>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                  <div className="message-timestamp">{message.timestamp}</div>
+                </div>
+              </div>
+            ))}
+
+            {searchLoading && (
+              <div className="message bot loading">
+                <div className="message-content">
+                  <div className="loading-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {searchError && (
+              <div className="error-message">
+                {searchError}
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
 
       {/* Map container */}
       <MapContainer 

@@ -10,11 +10,13 @@
     "check-data": "node src/check_data.js"
   },
   "dependencies": {
+    "@langchain/openai": "^0.6.3",
     "@turf/turf": "^7.2.0",
     "axios": "^1.6.8",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "langchain": "^0.3.30",
     "mongodb": "^6.18.0",
     "pg": "^8.11.3",
     "sequelize": "^6.37.2"
