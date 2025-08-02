@@ -61,6 +61,7 @@ const ParcelMap = () => {
   const API_BASE = 'http://localhost:3001'; // Backend Express server
   const PARCELS_ENDPOINT = `${API_BASE}/api/parcels`;
 
+
   // Chargement initial des parcelles au montage
   useEffect(() => {
     const fetchInitialParcels = async () => {
@@ -86,7 +87,6 @@ const ParcelMap = () => {
     };
     fetchInitialParcels();
   }, []);
-
   // Zoning color mapping
   const getZoningColor = (zoning) => {
     if (!zoning) return '#cccccc';
@@ -104,6 +104,7 @@ const ParcelMap = () => {
     return '#9B9B9B';
   };
 
+
   // Fonction simplifiée - pas de chargement par bounds pour l'instant
   const handleBoundsChange = useCallback((bounds) => {
     // Pour l'instant, on ne fait rien avec les bounds
@@ -111,10 +112,12 @@ const ParcelMap = () => {
     console.log('Map bounds changed:', bounds);
   }, []);
 
+
   // Handle map ready
   const handleMapReady = useCallback((map) => {
     mapRef.current = map;
   }, []);
+
 
   // Style function for GeoJSON features
   const styleFeature = (feature) => {
@@ -326,5 +329,6 @@ const ParcelMap = () => {
     </div>
   );
 };
+
 
 export default ParcelMap; 
