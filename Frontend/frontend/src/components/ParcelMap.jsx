@@ -58,10 +58,34 @@ const ParcelMap = () => {
   const SF_ZOOM = 13;
 
   // API endpoints
-  const API_BASE = 'http://localhost:5000'; // Adjust as needed
-  const BBOX_ENDPOINT = `${API_BASE}/bbox`;
-  const LLM_QUERY_ENDPOINT = `${API_BASE}/llm_query`;
-  const PARCELS_ENDPOINT = `${API_BASE}/parcels`;
+  const API_BASE = 'http://localhost:3001'; // Backend Express server
+  const PARCELS_ENDPOINT = `${API_BASE}/api/parcels`;
+
+  // Chargement initial des parcelles au montage
+  useEffect(() => {
+    const fetchInitialParcels = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetch(PARCELS_ENDPOINT);
+        if (!response.ok) throw new Error('Erreur lors du chargement initial des parcelles');
+        const data = await response.json();
+        if (data.features && data.features.length > 0) {
+          setParcelData(data);
+          setDebugInfo(`Loaded ${data.features.length} parcels (initial)`);
+        } else {
+          setParcelData(null);
+          setError('Aucune parcelle trouvée');
+        }
+      } catch (err) {
+        setError('Erreur lors du chargement initial des parcelles');
+        setParcelData(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInitialParcels();
+  }, []);
 
   // Zoning color mapping
   const getZoningColor = (zoning) => {
@@ -80,155 +104,21 @@ const ParcelMap = () => {
     return '#9B9B9B';
   };
 
-  // PART 1: Load parcels based on bounding box
-  const loadParcelsByBounds = useCallback(async (bounds) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const params = new URLSearchParams({
-        north: bounds.north,
-        south: bounds.south,
-        east: bounds.east,
-        west: bounds.west
-      });
-
-      const response = await fetch(`${BBOX_ENDPOINT}?${params}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load parcels: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('Loaded parcels by bounds:', data.features?.length || 0, 'features');
-      
-      setParcelData(data);
-      setDebugInfo(`Loaded ${data.features?.length || 0} parcels in current view`);
-      
-    } catch (err) {
-      console.error('Error loading parcels by bounds:', err);
-      setError('⚠️ Failed to load parcels in view');
-      setParcelData(null);
-    } finally {
-      setLoading(false);
-    }
+  // Fonction simplifiée - pas de chargement par bounds pour l'instant
+  const handleBoundsChange = useCallback((bounds) => {
+    // Pour l'instant, on ne fait rien avec les bounds
+    // Toutes les parcelles sont déjà chargées au démarrage
+    console.log('Map bounds changed:', bounds);
   }, []);
-
-  // PART 2: LLM query processing
-  const processLLMQuery = async (query) => {
-    try {
-      setSearchLoading(true);
-      setSearchError(null);
-      
-      const response = await fetch(LLM_QUERY_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: query })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`LLM query failed: ${response.status} ${response.statusText}`);
-      }
-      
-      const filters = await response.json();
-      console.log('LLM query response:', filters);
-      
-      return filters;
-      
-    } catch (err) {
-      console.error('Error processing LLM query:', err);
-      setSearchError('⚠️ Could not interpret your query');
-      return null;
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  // PART 3: Parcel query with filters
-  const loadParcelsByFilters = async (filters) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const params = new URLSearchParams();
-      if (filters.zoning) params.append('zoning', filters.zoning);
-      if (filters.neighborhood) params.append('neighborhood', filters.neighborhood);
-      if (filters.flood_risk) params.append('flood_risk', filters.flood_risk);
-      
-      const response = await fetch(`${PARCELS_ENDPOINT}?${params}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load filtered parcels: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('Loaded filtered parcels:', data.features?.length || 0, 'features');
-      
-      if (!data.features || data.features.length === 0) {
-        setError('⚠️ No parcels matched your search');
-        setParcelData(null);
-      } else {
-        setParcelData(data);
-        setCurrentFilters(filters);
-        setDebugInfo(`Found ${data.features.length} parcels matching your search`);
-      }
-      
-    } catch (err) {
-      console.error('Error loading filtered parcels:', err);
-      setError('⚠️ No parcels matched your search');
-      setParcelData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle search submission
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    
-    const filters = await processLLMQuery(searchQuery);
-    if (filters) {
-      await loadParcelsByFilters(filters);
-    }
-  };
 
   // Handle map ready
   const handleMapReady = useCallback((map) => {
     mapRef.current = map;
   }, []);
 
-  // Handle bounds change
-  const handleBoundsChange = useCallback((bounds) => {
-    // Only load by bounds if no search filters are active
-    if (!currentFilters) {
-      loadParcelsByBounds(bounds);
-    }
-  }, [loadParcelsByBounds, currentFilters]);
-
-  // Clear search and return to bounds-based loading
-  const clearSearch = () => {
-    setSearchQuery('');
-    setCurrentFilters(null);
-    setSearchError(null);
-    setError(null);
-    // Trigger bounds-based loading
-    if (mapRef.current) {
-      const bounds = mapRef.current.getBounds();
-      handleBoundsChange({
-        north: bounds.getNorth(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        west: bounds.getWest()
-      });
-    }
-  };
-
   // Style function for GeoJSON features
   const styleFeature = (feature) => {
-    const zoning = feature.properties.zoning;
+    const zoning = feature.properties.zoning_code || feature.properties.zoning_district;
     const color = getZoningColor(zoning);
     
     return {
@@ -245,56 +135,103 @@ const ParcelMap = () => {
   const onEachFeature = (feature, layer) => {
     const properties = feature.properties;
     
-    const parcelId = properties.parcel_id || 'Unknown';
-    const zoning = properties.zoning || 'Not specified';
+    // Utiliser les vrais noms de champs de l'API
+    const parcelId = properties.mapblklot || 'Unknown';
+    const zoning = properties.zoning_code || 'Not specified';
+    const zoningDistrict = properties.zoning_district || 'Not specified';
     const landUse = properties.land_use || 'Not specified';
     const areaSqft = properties.area_sqft;
     
+    // Construire l'adresse complète
+    const fromAddr = properties.from_address_num || '';
+    const toAddr = properties.to_address_num || '';
+    const streetName = properties.street_name || '';
+    const streetType = properties.street_type || '';
+    
+    let address = 'Address not available';
+    if (streetName && streetType) {
+      if (fromAddr && toAddr && fromAddr !== toAddr) {
+        address = `${fromAddr}-${toAddr} ${streetName} ${streetType}`;
+      } else if (fromAddr) {
+        address = `${fromAddr} ${streetName} ${streetType}`;
+      } else {
+        address = `${streetName} ${streetType}`;
+      }
+    }
+    
     const areaSqM = areaSqft ? (areaSqft * 0.0929).toFixed(1) : 'Unknown';
     
+    // Formatage de la date de mise à jour
+    const updatedAt = properties.updated_at 
+      ? new Date(properties.updated_at).toLocaleDateString('fr-FR')
+      : 'Unknown';
+    
+    // Coordonnées du centroïde
+    const lat = properties.centroid_latitude ? parseFloat(properties.centroid_latitude).toFixed(6) : 'N/A';
+    const lng = properties.centroid_longitude ? parseFloat(properties.centroid_longitude).toFixed(6) : 'N/A';
+    
     const popupContent = `
-      <div class="parcel-popup">
-        <h3>Parcel ${parcelId}</h3>
-        <p><strong>Zoning:</strong> ${zoning}</p>
-        <p><strong>Land Use:</strong> ${landUse}</p>
-        <p><strong>Area:</strong> ${areaSqM} m² (${areaSqft?.toFixed(0) || 'Unknown'} sq ft)</p>
+      <div class="parcel-popup" style="max-width: 350px; font-family: Arial, sans-serif;">
+        <h3 style="margin: 0 0 10px 0; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">
+          📍 Parcel ${parcelId}
+        </h3>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>🏠 Address:</strong> ${address}
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>🏗️ Zoning:</strong> ${zoning}
+          ${zoningDistrict !== 'Not specified' ? `<br><small style="color: #666;">${zoningDistrict}</small>` : ''}
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>🏘️ Neighborhood:</strong> ${properties.analysis_neighborhood || 'Not specified'}
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>🗺️ Planning District:</strong> ${properties.planning_district || 'Not specified'}
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>👮 Police District:</strong> ${properties.police_district || 'Not specified'}
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>🏛️ Supervisor:</strong> ${properties.supname || 'Not specified'}
+          ${properties.supervisor_district ? `<br><small style="color: #666;">District ${properties.supervisor_district}</small>` : ''}
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>📐 Area:</strong> ${areaSqM} m² (${areaSqft?.toFixed(0) || 'Unknown'} sq ft)
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>🌱 Land Use:</strong> ${landUse}
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>📊 Block/Lot:</strong> ${properties.blklot || 'N/A'}
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          <strong>📍 Coordinates:</strong> ${lat}, ${lng}
+        </div>
+        
+        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #eee; font-size: 11px; color: #666;">
+          <strong>📅 Last Updated:</strong> ${updatedAt}
+        </div>
       </div>
     `;
     
-    layer.bindPopup(popupContent);
+    layer.bindPopup(popupContent, {
+      maxWidth: 400,
+      className: 'custom-popup'
+    });
   };
 
   return (
     <div className="map-container">
-      {/* Search bar with LLM integration */}
-      <div className="search-bar">
-        <form onSubmit={handleSearch} style={{ display: 'flex', width: '100%' }}>
-          <input 
-            type="text" 
-            placeholder="Search parcels by zoning, land use, or location..."
-            className="search-input"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            disabled={searchLoading}
-          />
-          <button 
-            type="submit" 
-            className="search-button"
-            disabled={searchLoading}
-          >
-            {searchLoading ? '🔍' : '🔍'}
-          </button>
-        </form>
-        {currentFilters && (
-          <button 
-            onClick={clearSearch}
-            className="clear-search-button"
-            style={{ marginLeft: '10px', padding: '5px 10px', fontSize: '12px' }}
-          >
-            Clear Search
-          </button>
-        )}
-      </div>
 
       {/* Error messages */}
       {error && (
@@ -313,21 +250,7 @@ const ParcelMap = () => {
         </div>
       )}
 
-      {searchError && (
-        <div className="search-error" style={{ 
-          position: 'absolute', 
-          top: '80px', 
-          right: '10px', 
-          background: '#fff3e0', 
-          color: '#ef6c00', 
-          padding: '10px', 
-          borderRadius: '4px', 
-          zIndex: 1000,
-          maxWidth: '300px'
-        }}>
-          {searchError}
-        </div>
-      )}
+
 
       {/* Loading overlay */}
       {loading && (
