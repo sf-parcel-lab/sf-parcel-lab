@@ -39,6 +39,31 @@ const MapEventHandler = ({ onBoundsChange, onMapReady }) => {
 };
 
 const ParcelMap = () => {
+  // Chargement initial des parcelles au montage
+  useEffect(() => {
+    const fetchInitialParcels = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetch(PARCELS_ENDPOINT);
+        if (!response.ok) throw new Error('Erreur lors du chargement initial des parcelles');
+        const data = await response.json();
+        if (data.features && data.features.length > 0) {
+          setParcelData(data);
+          setDebugInfo(`Loaded ${data.features.length} parcels (initial)`);
+        } else {
+          setParcelData(null);
+          setError('Aucune parcelle trouvée');
+        }
+      } catch (err) {
+        setError('Erreur lors du chargement initial des parcelles');
+        setParcelData(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInitialParcels();
+  }, []);
   // State management
   const [parcelData, setParcelData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -58,10 +83,10 @@ const ParcelMap = () => {
   const SF_ZOOM = 13;
 
   // API endpoints
-  const API_BASE = 'http://localhost:5000'; // Adjust as needed
-  const BBOX_ENDPOINT = `${API_BASE}/bbox`;
-  const LLM_QUERY_ENDPOINT = `${API_BASE}/llm_query`;
-  const PARCELS_ENDPOINT = `${API_BASE}/parcels`;
+  const API_BASE = 'http://localhost:3001'; // Backend Express
+  // const BBOX_ENDPOINT = `${API_BASE}/bbox`; // (adapter si route backend dispo)
+  // const LLM_QUERY_ENDPOINT = `${API_BASE}/llm_query`; // (adapter si route backend dispo)
+  const PARCELS_ENDPOINT = `${API_BASE}/api/parcels`;
 
   // Zoning color mapping
   const getZoningColor = (zoning) => {
@@ -80,39 +105,11 @@ const ParcelMap = () => {
     return '#9B9B9B';
   };
 
-  // PART 1: Load parcels based on bounding box
-  const loadParcelsByBounds = useCallback(async (bounds) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const params = new URLSearchParams({
-        north: bounds.north,
-        south: bounds.south,
-        east: bounds.east,
-        west: bounds.west
-      });
+  // PART 1: Load parcels based on bounding box (DÉSACTIVÉ TEMPORAIREMENT)
+  // const loadParcelsByBounds = useCallback(async (bounds) => {
+  //   // Cette fonction est désactivée tant que la route backend n’existe pas
+  // }, []);
 
-      const response = await fetch(`${BBOX_ENDPOINT}?${params}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load parcels: ${response.status} ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log('Loaded parcels by bounds:', data.features?.length || 0, 'features');
-      
-      setParcelData(data);
-      setDebugInfo(`Loaded ${data.features?.length || 0} parcels in current view`);
-      
-    } catch (err) {
-      console.error('Error loading parcels by bounds:', err);
-      setError('⚠️ Failed to load parcels in view');
-      setParcelData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   // PART 2: LLM query processing
   const processLLMQuery = async (query) => {
@@ -202,11 +199,11 @@ const ParcelMap = () => {
 
   // Handle bounds change
   const handleBoundsChange = useCallback((bounds) => {
-    // Only load by bounds if no search filters are active
-    if (!currentFilters) {
-      loadParcelsByBounds(bounds);
-    }
-  }, [loadParcelsByBounds, currentFilters]);
+    // Désactivé : ne rien faire tant que la logique bbox n’est pas disponible
+    // if (!currentFilters) {
+    //   loadParcelsByBounds(bounds);
+    // }
+  }, [currentFilters]);
 
   // Clear search and return to bounds-based loading
   const clearSearch = () => {
@@ -228,7 +225,7 @@ const ParcelMap = () => {
 
   // Style function for GeoJSON features
   const styleFeature = (feature) => {
-    const zoning = feature.properties.zoning;
+    const zoning = feature.properties.zoning_code || feature.properties.zoning_district;
     const color = getZoningColor(zoning);
     
     return {
@@ -245,19 +242,27 @@ const ParcelMap = () => {
   const onEachFeature = (feature, layer) => {
     const properties = feature.properties;
     
-    const parcelId = properties.parcel_id || 'Unknown';
-    const zoning = properties.zoning || 'Not specified';
+    // Utiliser les vrais noms de champs de l'API
+    const parcelId = properties.mapblklot || 'Unknown';
+    const zoning = properties.zoning_code || properties.zoning_district || 'Not specified';
     const landUse = properties.land_use || 'Not specified';
     const areaSqft = properties.area_sqft;
+    
+    // Construire l'adresse si disponible
+    const address = properties.street_name && properties.street_type 
+      ? `${properties.from_address_num || ''} ${properties.street_name} ${properties.street_type}`.trim()
+      : 'Address not available';
     
     const areaSqM = areaSqft ? (areaSqft * 0.0929).toFixed(1) : 'Unknown';
     
     const popupContent = `
       <div class="parcel-popup">
         <h3>Parcel ${parcelId}</h3>
+        <p><strong>Address:</strong> ${address}</p>
         <p><strong>Zoning:</strong> ${zoning}</p>
         <p><strong>Land Use:</strong> ${landUse}</p>
         <p><strong>Area:</strong> ${areaSqM} m² (${areaSqft?.toFixed(0) || 'Unknown'} sq ft)</p>
+        <p><strong>Neighborhood:</strong> ${properties.analysis_neighborhood || 'Not specified'}</p>
       </div>
     `;
     
