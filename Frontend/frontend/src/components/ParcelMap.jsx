@@ -161,22 +161,30 @@ const ParcelMap = () => {
         if (data.data.length > 0) {
           console.log('Sample parcel data:', data.data[0]); // Debug log
           
+          // Check geometry data
+          const parcelsWithGeometry = data.data.filter(parcel => parcel.shape || parcel.geometry);
+          const parcelsWithoutGeometry = data.data.filter(parcel => !parcel.shape && !parcel.geometry);
+          
+          console.log(`Parcels with geometry: ${parcelsWithGeometry.length}`);
+          console.log(`Parcels without geometry: ${parcelsWithoutGeometry.length}`);
+          
+          if (parcelsWithGeometry.length > 0) {
+            console.log('Sample parcel with geometry:', parcelsWithGeometry[0]);
+          }
+          
           const geoJsonData = {
             type: "FeatureCollection",
-            features: data.data
-              .filter(parcel => parcel.shape || parcel.geometry) // Only include parcels with geometry
-              .map(parcel => ({
-                type: "Feature",
-                geometry: parcel.shape || parcel.geometry, // Use shape field from backend
-                properties: parcel
-              }))
+            features: parcelsWithGeometry.map(parcel => ({
+              type: "Feature",
+              geometry: parcel.shape || parcel.geometry, // Use shape field from backend
+              properties: parcel
+            }))
           };
           
           console.log('Generated GeoJSON:', geoJsonData); // Debug log
           setParcelData(geoJsonData);
           setCurrentFilters(data.query_used);
-          const validParcels = data.data.filter(parcel => parcel.shape || parcel.geometry).length;
-          setDebugInfo(`Found ${data.data.length} parcels matching your query (${validParcels} with geometry)`);
+                    setDebugInfo(`Found ${data.data.length} parcels matching your query (${parcelsWithGeometry.length} with geometry, ${parcelsWithoutGeometry.length} without)`);
         } else {
           setError('⚠️ No parcels matched your query');
           setParcelData(null);

@@ -116,8 +116,19 @@ app.post('/api/query', async (req, res) => {
     console.log('Generated MongoDB query:', JSON.stringify(mongoQuery, null, 2));
     
     // Execute MongoDB query
-    const results = await collection.find(mongoQuery, { projection: { _id: 0 } }).limit(50).toArray();
+    const results = await collection.find(mongoQuery, { projection: { _id: 0 } }).limit(200).toArray();
     console.log(`Found ${results.length} parcels matching query`);
+    
+    // Debug: Check geometry data
+    if (results.length > 0) {
+      const sampleParcel = results[0];
+      console.log('Sample parcel shape field:', sampleParcel.shape ? 'EXISTS' : 'MISSING');
+      console.log('Sample parcel geometry field:', sampleParcel.geometry ? 'EXISTS' : 'MISSING');
+      if (sampleParcel.shape) {
+        console.log('Shape type:', sampleParcel.shape.type);
+        console.log('Shape coordinates length:', sampleParcel.shape.coordinates ? sampleParcel.shape.coordinates.length : 'NONE');
+      }
+    }
     
     res.json({
       data: results,
