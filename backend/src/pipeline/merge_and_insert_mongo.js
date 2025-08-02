@@ -50,6 +50,11 @@ async function fetchLandslideHazard() {
   return fetchAllData(process.env.LANDSLIDE_HAZARD_DATA_URL);
 }
 
+// Fetch 100-Year Storm Flood Risk Zone
+async function fetchFloodRiskZone() {
+  return fetchAllData(process.env.FLOOD_RISK_ZONE_DATA_URL);
+}
+
 
 function mergeDatasets(zoningArr, ...otherDatasets) {
   // Index other datasets by parcel_id for fast lookup
@@ -152,6 +157,12 @@ async function main() {
     const apezPolygons = (apez || []).map(a => a.shape || a.geometry).filter(Boolean);
     const landslidePolygons = (landslideHazard || []).map(l => l.shape || l.geometry).filter(Boolean);
 
+    // Fetch Flood Risk Zone
+    console.log('Fetching Flood Risk Zone (100-Year Storm)...');
+    const floodRiskZone = await fetchFloodRiskZone();
+    console.log(`Fetched ${floodRiskZone.length} flood risk zone records.`);
+    const floodPolygons = (floodRiskZone || []).map(f => f.shape || f.geometry).filter(Boolean);
+
     // Croisement géométrique pour chaque parcelle
     const merged = mergeDatasets(parcels, zoning, landUse).map(parcel => {
       const parcelGeom = parcel.shape || parcel.geometry;
@@ -159,6 +170,7 @@ async function main() {
       let priorityEquity = false;
       let inAPEZ = false;
       let inLandslide = false;
+      let inFlood = false;
       if (parcelGeom) {
         // Priority Equity
         priorityEquity = priorityEquityPolygons.some(poly => {
@@ -176,13 +188,18 @@ async function main() {
         inLandslide = landslidePolygons.some(poly => {
           try { return turf.booleanIntersects(parcelGeom, poly); } catch { return false; }
         });
+        // Flood Risk
+        inFlood = floodPolygons.some(poly => {
+          try { return turf.booleanIntersects(parcelGeom, poly); } catch { return false; }
+        });
       }
       return {
         ...parcel,
         priority_equity_geography: priorityEquity,
         overlays,
         apez: inAPEZ,
-        landslide_hazard: inLandslide
+        landslide_hazard: inLandslide,
+        flood_risk_zone: inFlood
       };
     });
     console.log(`Merged dataset: ${merged.length} parcels.`);
