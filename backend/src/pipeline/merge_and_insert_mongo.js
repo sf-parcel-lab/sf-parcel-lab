@@ -1,6 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 const { MongoClient } = require('mongodb');
+const turf = require('@turf/turf');
 
 async function fetchAllData(url, batchSize = 1000, maxTotal = 100000) {
   let results = [];
@@ -20,6 +21,12 @@ async function fetchZoning() {
   return fetchAllData(process.env.ZONING_DATA_URL);
 }
 
+
+// Fetch Special Use Districts (SUDs)
+async function fetchSpecialUseDistricts() {
+  return fetchAllData(process.env.SPECIAL_USE_DISTRICTS_DATA_URL);
+}
+
 async function fetchLandUse() {
   return fetchAllData(process.env.LAND_USE_DATA_URL);
 }
@@ -27,6 +34,22 @@ async function fetchLandUse() {
 async function fetchParcels() {
   return fetchAllData(process.env.PARCELS_DATA_URL);
 }
+
+// Fetch Building Permits
+async function fetchBuildingPermits() {
+  return fetchAllData(process.env.BUILDING_PERMITS_DATA_URL);
+}
+
+// Fetch Air Pollutant Exposure Zone (APEZ)
+async function fetchAPEZ() {
+  return fetchAllData(process.env.APEZ_DATA_URL);
+}
+
+// Fetch Landslide Susceptibility Hazard Zones
+async function fetchLandslideHazard() {
+  return fetchAllData(process.env.LANDSLIDE_HAZARD_DATA_URL);
+}
+
 
 function mergeDatasets(zoningArr, ...otherDatasets) {
   // Index other datasets by parcel_id for fast lookup
@@ -96,13 +119,72 @@ async function main() {
     console.log('Fetching parcels data...');
     const parcels = await fetchParcels();
     console.log(`Fetched ${parcels.length} parcels records.`);
-    // TODO: fetch other datasets (permits, etc.)
+
+    console.log('Fetching special use districts (SUDs)...');
+    const suds = await fetchSpecialUseDistricts();
+    console.log(`Fetched ${suds.length} SUDs records.`);
+    // TODO: merge zoningDistricts and SUDs into parcels
+    // Fetch building permits
+    console.log('Fetching building permits...');
+    const buildingPermits = await fetchBuildingPermits();
+    console.log(`Fetched ${buildingPermits.length} building permits records.`);
+    // TODO: merge permits into parcels
+    // Fetch APEZ
+    console.log('Fetching Air Pollutant Exposure Zones (APEZ)...');
+    const apez = await fetchAPEZ();
+    console.log(`Fetched ${apez.length} APEZ records.`);
+    // Fetch Landslide Hazard
+    console.log('Fetching Landslide Susceptibility Hazard Zones...');
+    const landslideHazard = await fetchLandslideHazard();
+    console.log(`Fetched ${landslideHazard.length} landslide hazard records.`);
     if (parcels.length === 0) {
       console.error('No parcels data fetched! Aborting.');
       return;
     }
     console.log('Merging datasets...');
-    const merged = mergeDatasets(parcels, zoning, landUse);
+    // Préparation des polygones overlays
+    const sudPolygons = (suds || []).map(sud => ({
+      name: (sud.sud_name || '').trim(),
+      geometry: sud.shape || sud.geometry
+    })).filter(s => s.geometry);
+    const priorityEquityPolygons = sudPolygons.filter(s => s.name === 'Priority Equity Geographies SUD');
+    const otherSUDPolygons = sudPolygons.filter(s => s.name && s.name !== 'Priority Equity Geographies SUD');
+    const apezPolygons = (apez || []).map(a => a.shape || a.geometry).filter(Boolean);
+    const landslidePolygons = (landslideHazard || []).map(l => l.shape || l.geometry).filter(Boolean);
+
+    // Croisement géométrique pour chaque parcelle
+    const merged = mergeDatasets(parcels, zoning, landUse).map(parcel => {
+      const parcelGeom = parcel.shape || parcel.geometry;
+      let overlays = [];
+      let priorityEquity = false;
+      let inAPEZ = false;
+      let inLandslide = false;
+      if (parcelGeom) {
+        // Priority Equity
+        priorityEquity = priorityEquityPolygons.some(poly => {
+          try { return turf.booleanIntersects(parcelGeom, poly.geometry); } catch { return false; }
+        });
+        // SUD overlays
+        overlays = otherSUDPolygons.filter(poly => {
+          try { return turf.booleanIntersects(parcelGeom, poly.geometry); } catch { return false; }
+        }).map(poly => poly.name);
+        // APEZ
+        inAPEZ = apezPolygons.some(poly => {
+          try { return turf.booleanIntersects(parcelGeom, poly); } catch { return false; }
+        });
+        // Landslide
+        inLandslide = landslidePolygons.some(poly => {
+          try { return turf.booleanIntersects(parcelGeom, poly); } catch { return false; }
+        });
+      }
+      return {
+        ...parcel,
+        priority_equity_geography: priorityEquity,
+        overlays,
+        apez: inAPEZ,
+        landslide_hazard: inLandslide
+      };
+    });
     console.log(`Merged dataset: ${merged.length} parcels.`);
     if (merged.length === 0) {
       console.error('No merged data to insert!');
