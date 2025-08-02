@@ -24,6 +24,8 @@ Available fields in the database:
 - analysis_neighborhood: Neighborhood name (e.g., "Sunset/Parkside")
 - police_district: Police district name (e.g., "TARAVAL")
 - supervisor_district: Supervisor district number (e.g., "4")
+- active: Boolean indicating if property is active (true/false)
+- in_asr_secured_roll: Boolean indicating if property is in secured roll (true/false)
 
 Query mapping rules:
 - "residential" → {"zoning_code": {"$regex": "^RH|^RM", "$options": "i"}}
@@ -34,11 +36,16 @@ Query mapping rules:
 - "South of Market" → {"planning_district": "South of Market"}
 - "Mission" → {"planning_district": "Mission"}
 - "Sunset" → {"planning_district": {"$regex": "Sunset", "$options": "i"}}
+- "active properties" → {"active": true}
+- "inactive properties" → {"active": false}
+- "secured roll" → {"in_asr_secured_roll": true}
 
 Examples:
 - "Show me residential properties" → {"zoning_code": {"$regex": "^RH|^RM", "$options": "i"}}
 - "Find properties in Sunset" → {"planning_district": {"$regex": "Sunset", "$options": "i"}}
 - "Commercial properties in South of Market" → {"zoning_code": {"$regex": "^C", "$options": "i"}, "planning_district": "South of Market"}
+- "Active properties" → {"active": true}
+- "Active residential properties" → {"zoning_code": {"$regex": "^RH|^RM", "$options": "i"}, "active": true}
 
 Output ONLY the JSON object, no other text.
 `;
