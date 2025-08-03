@@ -87,7 +87,7 @@ Only output JSON, no extra text.
     const collection = db.collection('parcels_merged');
     
     await client.connect();
-    const results = await collection.find(mongoQuery, { projection: { _id: 0 } }).limit(200).toArray();
+    const results = await collection.find(mongoQuery, { projection: { _id: 0 } }).limit(2000).toArray();
     await client.close();
 
     res.json({
