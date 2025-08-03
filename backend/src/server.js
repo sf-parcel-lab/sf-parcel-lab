@@ -5,6 +5,7 @@ const cors = require('cors');
 const { ChatOpenAI } = require('@langchain/openai');
 const { HumanMessage, SystemMessage } = require('@langchain/core/messages');
 const { MongoClient } = require('mongodb');
+const agentRouter = require('./agent/agent_endpoint');
 
 app.use(cors({ origin: 'http://localhost:3000' }));
 app.use(express.json());
@@ -64,6 +65,9 @@ const collection = db.collection('parcels_merged');
 app.get('/', (req, res) => {
   res.send('SF Parcel Backend API');
 });
+
+// Agent routes
+app.use('/api', agentRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

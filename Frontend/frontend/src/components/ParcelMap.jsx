@@ -53,6 +53,8 @@ const ParcelMap = () => {
   const [messages, setMessages] = useState([]);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const messagesEndRef = useRef(null);
+  const [isIntelligentMode, setIsIntelligentMode] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Refs
   const mapRef = useRef(null);
@@ -66,6 +68,7 @@ const ParcelMap = () => {
   const API_BASE = 'http://localhost:3001'; // Backend Express server
   const PARCELS_ENDPOINT = `${API_BASE}/api/parcels`;
   const LLM_QUERY_ENDPOINT = `${API_BASE}/api/query`;
+  const INTELLIGENT_AGENT_ENDPOINT = `${API_BASE}/api/agent/query`;
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -104,7 +107,9 @@ const ParcelMap = () => {
       setSearchLoading(true);
       setSearchError(null);
       
-      const response = await fetch(LLM_QUERY_ENDPOINT, {
+      const endpoint = isIntelligentMode ? INTELLIGENT_AGENT_ENDPOINT : LLM_QUERY_ENDPOINT;
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: query })
@@ -115,6 +120,16 @@ const ParcelMap = () => {
       }
       
       const data = await response.json();
+      
+      // Handle intelligent agent response format
+      if (isIntelligentMode && data.agent_response) {
+        return {
+          ...data,
+          data: data.data || [],
+          query_used: data.query_used || {}
+        };
+      }
+      
       return data;
       
     } catch (err) {
@@ -146,9 +161,14 @@ const ParcelMap = () => {
       const data = await processLLMQuery(message);
       
       if (data && data.data) {
+        // Use intelligent agent response if available, otherwise use default message
+        const responseText = isIntelligentMode && data.agent_response 
+          ? data.agent_response 
+          : `Found ${data.data.length} parcels matching your query.`;
+        
         const botMessage = {
           id: Date.now() + 1,
-          text: `Found ${data.data.length} parcels matching your query.`,
+          text: responseText,
           sender: 'bot',
           timestamp: new Date().toLocaleTimeString(),
           data: data.data,
@@ -413,8 +433,22 @@ const ParcelMap = () => {
         </div>
       )}
 
+      {/* Mobile Toggle Button */}
+      <button
+        className="mobile-sidebar-toggle"
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        title="Toggle search sidebar"
+      >
+        {isSidebarOpen ? '✕' : '☰'}
+      </button>
+
       {/* Search Bar with Chatbot */}
-      <div className={`search-bar ${isChatExpanded ? 'chat-expanded' : ''}`}>
+      <div className={`search-bar ${isChatExpanded ? 'chat-expanded' : ''} ${isSidebarOpen ? 'sidebar-open' : ''}`}>
+        <div className="sidebar-header">
+          <h3>SF Parcel Explorer</h3>
+          <p>Search and analyze San Francisco properties</p>
+        </div>
+        
         <form onSubmit={handleSearch} style={{ display: 'flex', width: '100%' }}>
           <input
             type="text"
@@ -449,12 +483,28 @@ const ParcelMap = () => {
           </button>
         </form>
 
+        {/* AI Mode Toggle */}
+        <div className="ai-mode-toggle">
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={isIntelligentMode}
+              onChange={(e) => setIsIntelligentMode(e.target.checked)}
+            />
+            <span className="toggle-slider"></span>
+          </label>
+          <span className="toggle-label">
+            {isIntelligentMode ? ' Intelligent Agent' : ' Basic Agent Search'}
+          </span>
+        </div>
+
         {/* Chat Messages */}
         {isChatExpanded && (
           <div className="chat-messages">
             {messages.length === 0 && (
               <div className="chat-welcome">
                 <p>👋 Hi! I'm your SF Parcel Assistant.</p>
+                <p><strong>Current Mode:</strong> {isIntelligentMode ? '🤖 Intelligent Agent' : '🔍 Basic Search'}</p>
                 <p>Ask me about:</p>
                 <ul>
                   <li>• Properties in specific neighborhoods</li>
@@ -463,6 +513,11 @@ const ParcelMap = () => {
                   <li>• Properties in specific districts</li>
                 </ul>
                 <p>Try: "Show me residential properties in Ingleside"</p>
+                {isIntelligentMode && (
+                  <div className="intelligent-mode-info">
+                    <p>💡 <strong>Intelligent Mode:</strong> I'll provide insights, recommendations, and detailed analysis!</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -472,7 +527,10 @@ const ParcelMap = () => {
                 className={`message ${message.sender} ${message.isError ? 'error' : ''}`}
               >
                 <div className="message-content">
-                  <div className="message-text">{message.text}</div>
+                  <div 
+                    className="message-text"
+                    dangerouslySetInnerHTML={{ __html: message.text }}
+                  />
                   {message.data && message.data.length > 0 && (
                     <div className="message-results">
                       <div className="results-summary">
