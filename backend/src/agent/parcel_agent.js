@@ -318,7 +318,7 @@ Output JSON with these fields:
       recommendations.topPicks = analysis.investmentPotential.concat(analysis.familyFriendly).slice(0, 3);
     }
 
-    recommendations.investmentOpportunities = analysis.investmentPotential;
+    recommendations.developmentOpportunities = analysis.investmentPotential;
     recommendations.familyOptions = analysis.familyFriendly;
     recommendations.hiddenGems = analysis.hiddenGems;
 
@@ -350,20 +350,20 @@ You are a professional San Francisco real estate analyst. Create a structured, p
 </details>
 
 <details>
-<summary>Investment Opportunities</summary>
+<summary>Development Opportunities</summary>
 
-[Professional analysis of investment potential, market conditions, and strategic recommendations]
+[Professional analysis of development potential, market conditions, and strategic recommendations]
 
 </details>
 
 Guidelines:
 1. Use ONLY the exact format above with proper markdown
-2. NO emojis - maintain professional tone
+2. NO emojis NO em dashes - maintain professional tone
 3. Include specific property addresses when available
 4. Provide actionable insights in each section
 5. Keep neighborhood insights factual and data-driven
 6. Explain zoning implications clearly
-7. Focus on investment potential and market analysis
+7. Focus on development potential and market analysis
 8. If search was broadened, mention this briefly in neighborhood insights
 `;
 
