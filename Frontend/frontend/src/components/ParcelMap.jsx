@@ -106,21 +106,21 @@ const ParcelMap = () => {
     try {
       setSearchLoading(true);
       setSearchError(null);
-      
+
       const endpoint = isIntelligentMode ? INTELLIGENT_AGENT_ENDPOINT : LLM_QUERY_ENDPOINT;
-      
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: query })
       });
-      
+
       if (!response.ok) {
         throw new Error(`LLM query failed: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Handle intelligent agent response format
       if (isIntelligentMode && data.agent_response) {
         return {
@@ -129,9 +129,9 @@ const ParcelMap = () => {
           query_used: data.query_used || {}
         };
       }
-      
+
       return data;
-      
+
     } catch (err) {
       console.error('Error processing LLM query:', err);
       setSearchError('⚠️ Could not interpret your query');
@@ -159,13 +159,13 @@ const ParcelMap = () => {
 
     try {
       const data = await processLLMQuery(message);
-      
+
       if (data && data.data) {
         // Use intelligent agent response if available, otherwise use default message
-        const responseText = isIntelligentMode && data.agent_response 
-          ? data.agent_response 
+        const responseText = isIntelligentMode && data.agent_response
+          ? data.agent_response
           : `Found ${data.data.length} parcels matching your query.`;
-        
+
         const botMessage = {
           id: Date.now() + 1,
           text: responseText,
@@ -180,18 +180,18 @@ const ParcelMap = () => {
         // Display results on map
         if (data.data.length > 0) {
           console.log('Sample parcel data:', data.data[0]); // Debug log
-          
+
           // Check geometry data
           const parcelsWithGeometry = data.data.filter(parcel => parcel.shape || parcel.geometry);
           const parcelsWithoutGeometry = data.data.filter(parcel => !parcel.shape && !parcel.geometry);
-          
+
           console.log(`Parcels with geometry: ${parcelsWithGeometry.length}`);
           console.log(`Parcels without geometry: ${parcelsWithoutGeometry.length}`);
-          
+
           if (parcelsWithGeometry.length > 0) {
             console.log('Sample parcel with geometry:', parcelsWithGeometry[0]);
           }
-          
+
           const geoJsonData = {
             type: "FeatureCollection",
             features: parcelsWithGeometry.map(parcel => ({
@@ -200,11 +200,11 @@ const ParcelMap = () => {
               properties: parcel
             }))
           };
-          
+
           console.log('Generated GeoJSON:', geoJsonData); // Debug log
           setParcelData(geoJsonData);
           setCurrentFilters(data.query_used);
-                    setDebugInfo(`Found ${data.data.length} parcels matching your query (${parcelsWithGeometry.length} with geometry, ${parcelsWithoutGeometry.length} without)`);
+          setDebugInfo(`Found ${data.data.length} parcels matching your query (${parcelsWithGeometry.length} with geometry, ${parcelsWithoutGeometry.length} without)`);
         } else {
           setError('⚠️ No parcels matched your query');
           setParcelData(null);
@@ -250,9 +250,9 @@ const ParcelMap = () => {
   // Zoning color mapping
   const getZoningColor = (zoning) => {
     if (!zoning) return '#cccccc';
-    
+
     const zone = zoning.toUpperCase();
-    
+
     if (zone.startsWith('RM-')) return '#4A90E2';
     if (zone.startsWith('RH-')) return '#7ED321';
     if (zone.startsWith('RTO-')) return '#50E3C2';
@@ -260,7 +260,7 @@ const ParcelMap = () => {
     if (zone.startsWith('M-')) return '#F5A623';
     if (zone.startsWith('MIXED')) return '#9013FE';
     if (zone.startsWith('PDR-')) return '#8B572A';
-    
+
     return '#9B9B9B';
   };
 
@@ -283,7 +283,7 @@ const ParcelMap = () => {
   const styleFeature = (feature) => {
     const zoning = feature.properties.zoning_code || feature.properties.zoning_district;
     const color = getZoningColor(zoning);
-    
+
     return {
       fillColor: color,
       fillOpacity: 0.7,
@@ -297,20 +297,20 @@ const ParcelMap = () => {
   // Handle feature click
   const onEachFeature = (feature, layer) => {
     const properties = feature.properties;
-    
+
     // Utiliser les vrais noms de champs de l'API
     const parcelId = properties.mapblklot || 'Unknown';
     const zoning = properties.zoning_code || 'Not specified';
     const zoningDistrict = properties.zoning_district || 'Not specified';
     const landUse = properties.land_use || 'Not specified';
     const areaSqft = properties.area_sqft;
-    
+
     // Construire l'adresse complète
     const fromAddr = properties.from_address_num || '';
     const toAddr = properties.to_address_num || '';
     const streetName = properties.street_name || '';
     const streetType = properties.street_type || '';
-    
+
     let address = 'Address not available';
     if (streetName && streetType) {
       if (fromAddr && toAddr && fromAddr !== toAddr) {
@@ -321,18 +321,18 @@ const ParcelMap = () => {
         address = `${streetName} ${streetType}`;
       }
     }
-    
+
     const areaSqM = areaSqft ? (areaSqft * 0.0929).toFixed(1) : 'Unknown';
-    
+
     // Formatage de la date de mise à jour
-    const updatedAt = properties.updated_at 
+    const updatedAt = properties.updated_at
       ? new Date(properties.updated_at).toLocaleDateString('fr-FR')
       : 'Unknown';
-    
+
     // Coordonnées du centroïde
     const lat = properties.centroid_latitude ? parseFloat(properties.centroid_latitude).toFixed(6) : 'N/A';
     const lng = properties.centroid_longitude ? parseFloat(properties.centroid_longitude).toFixed(6) : 'N/A';
-    
+
     const popupContent = `
       <div class="parcel-popup" style="max-width: 350px; font-family: Arial, sans-serif;">
         <h3 style="margin: 0 0 10px 0; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;">
@@ -386,7 +386,7 @@ const ParcelMap = () => {
         </div>
       </div>
     `;
-    
+
     layer.bindPopup(popupContent, {
       maxWidth: 400,
       className: 'custom-popup'
@@ -398,14 +398,14 @@ const ParcelMap = () => {
 
       {/* Error messages */}
       {error && (
-        <div className="error-message" style={{ 
-          position: 'absolute', 
-          top: '80px', 
-          left: '10px', 
-          background: '#ffebee', 
-          color: '#c62828', 
-          padding: '10px', 
-          borderRadius: '4px', 
+        <div className="error-message" style={{
+          position: 'absolute',
+          top: '80px',
+          left: '10px',
+          background: '#ffebee',
+          color: '#c62828',
+          padding: '10px',
+          borderRadius: '4px',
           zIndex: 1000,
           maxWidth: '300px'
         }}>
@@ -445,10 +445,10 @@ const ParcelMap = () => {
       {/* Search Bar with Chatbot */}
       <div className={`search-bar ${isChatExpanded ? 'chat-expanded' : ''} ${isSidebarOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-header">
-          <h3>SF Parcel Explorer</h3>
+          <h3>SEEKLY</h3>
           <p>Search and analyze San Francisco properties</p>
         </div>
-        
+
         <form onSubmit={handleSearch} style={{ display: 'flex', width: '100%' }}>
           <input
             type="text"
@@ -527,7 +527,7 @@ const ParcelMap = () => {
                 className={`message ${message.sender} ${message.isError ? 'error' : ''}`}
               >
                 <div className="message-content">
-                  <div 
+                  <div
                     className="message-text"
                     dangerouslySetInnerHTML={{ __html: message.text }}
                   />
@@ -573,9 +573,9 @@ const ParcelMap = () => {
       </div>
 
       {/* Map container */}
-      <MapContainer 
-        center={SF_CENTER} 
-        zoom={SF_ZOOM} 
+      <MapContainer
+        center={SF_CENTER}
+        zoom={SF_ZOOM}
         className="map"
       >
         <TileLayer
@@ -584,7 +584,7 @@ const ParcelMap = () => {
         />
 
         {/* Map event handler */}
-        <MapEventHandler 
+        <MapEventHandler
           onBoundsChange={handleBoundsChange}
           onMapReady={handleMapReady}
         />
@@ -605,23 +605,23 @@ const ParcelMap = () => {
       <div className="map-legend">
         <h4>Zoning Colors</h4>
         <div className="legend-item">
-          <span className="legend-color" style={{backgroundColor: '#4A90E2'}}></span>
+          <span className="legend-color" style={{ backgroundColor: '#4A90E2' }}></span>
           <span>RM-* (Residential Multi-Unit)</span>
         </div>
         <div className="legend-item">
-          <span className="legend-color" style={{backgroundColor: '#7ED321'}}></span>
+          <span className="legend-color" style={{ backgroundColor: '#7ED321' }}></span>
           <span>RH-* (Residential House)</span>
         </div>
         <div className="legend-item">
-          <span className="legend-color" style={{backgroundColor: '#D0021B'}}></span>
+          <span className="legend-color" style={{ backgroundColor: '#D0021B' }}></span>
           <span>C-* (Commercial)</span>
         </div>
         <div className="legend-item">
-          <span className="legend-color" style={{backgroundColor: '#F5A623'}}></span>
+          <span className="legend-color" style={{ backgroundColor: '#F5A623' }}></span>
           <span>M-* (Mixed Use)</span>
         </div>
         <div className="legend-item">
-          <span className="legend-color" style={{backgroundColor: '#cccccc'}}></span>
+          <span className="legend-color" style={{ backgroundColor: '#cccccc' }}></span>
           <span>No Zoning Data</span>
         </div>
       </div>
